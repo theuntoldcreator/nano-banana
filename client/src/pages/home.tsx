@@ -4,11 +4,13 @@ import FilterTabs from "@/components/filter-tabs";
 import Gallery from "@/components/gallery";
 import AdminPanel from "@/components/admin-panel";
 import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const { session } = useAuth();
 
   return (
     <div className="min-h-screen bg-background">
@@ -16,7 +18,7 @@ export default function Home() {
       <HeroSection searchQuery={searchQuery} onSearchChange={setSearchQuery} />
       <FilterTabs selectedCategory={selectedCategory} onCategoryChange={setSelectedCategory} />
       <Gallery searchQuery={searchQuery} selectedCategory={selectedCategory} />
-      <AdminPanel isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />
+      {session && <AdminPanel isOpen={isAdminOpen} onClose={() => setIsAdminOpen(false)} />}
       
       {/* Footer */}
       <footer className="bg-card border-t border-border py-12">

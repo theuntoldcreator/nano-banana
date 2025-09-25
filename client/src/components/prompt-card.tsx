@@ -47,20 +47,6 @@ export default function PromptCard({ prompt }: PromptCardProps) {
     likeMutation.mutate();
   };
 
-  const getCategoryColor = (category: string) => {
-    const colors = {
-      "Digital Art": "bg-accent/20 text-accent",
-      "Nature": "bg-success/20 text-success",
-      "Abstract": "bg-secondary/20 text-secondary",
-      "Portrait": "bg-accent/20 text-accent",
-      "Vintage": "bg-accent/20 text-accent",
-      "Surreal": "bg-secondary/20 text-secondary",
-      "Macro": "bg-success/20 text-success",
-      "Architecture": "bg-accent/20 text-accent",
-    };
-    return colors[category as keyof typeof colors] || "bg-muted/20 text-muted-foreground";
-  };
-
   return (
     <div className="masonry-item group relative" data-testid={`card-prompt-${prompt.id}`}>
       <div className="bg-card rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 border border-border">
@@ -69,14 +55,13 @@ export default function PromptCard({ prompt }: PromptCardProps) {
           alt={prompt.title}
           className="w-full h-auto object-cover"
           onError={(e) => {
-            // Fallback image if the original fails to load
             e.currentTarget.src = "https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600";
           }}
           data-testid={`img-prompt-${prompt.id}`}
         />
         <div className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <Badge className={getCategoryColor(prompt.category)} data-testid={`badge-category-${prompt.id}`}>
+          <div className="flex items-center justify-between mb-2">
+            <Badge variant="secondary" data-testid={`badge-category-${prompt.id}`}>
               {prompt.category}
             </Badge>
             <button 
@@ -90,9 +75,21 @@ export default function PromptCard({ prompt }: PromptCardProps) {
             </button>
           </div>
           
-          <div className="bg-muted rounded-lg p-3 font-mono text-sm text-muted-foreground mb-3">
-            <span data-testid={`text-prompt-${prompt.id}`}>{prompt.prompt}</span>
+          <h3 className="font-bold text-lg text-foreground mb-2" data-testid={`text-title-${prompt.id}`}>
+            {prompt.title}
+          </h3>
+
+          <div className="bg-muted rounded-lg p-3 font-mono text-sm text-muted-foreground mb-4">
+            <p className="line-clamp-3" data-testid={`text-prompt-${prompt.id}`}>{prompt.prompt}</p>
           </div>
+
+          {prompt.tags && prompt.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {prompt.tags.map((tag) => (
+                <Badge key={tag} variant="outline">{tag}</Badge>
+              ))}
+            </div>
+          )}
           
           <Button 
             onClick={copyPrompt}

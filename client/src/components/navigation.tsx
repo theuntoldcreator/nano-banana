@@ -1,11 +1,22 @@
 import { Button } from "@/components/ui/button";
-import { Settings } from "lucide-react";
+import { Settings, LogIn, LogOut } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLocation } from "wouter";
+import { supabase } from "@/integrations/supabase/client";
 
 interface NavigationProps {
   onAdminClick: () => void;
 }
 
 export default function Navigation({ onAdminClick }: NavigationProps) {
+  const { session } = useAuth();
+  const [, setLocation] = useLocation();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setLocation("/");
+  };
+
   return (
     <nav className="bg-card/80 border-b border-border sticky top-0 z-50 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -30,19 +41,35 @@ export default function Navigation({ onAdminClick }: NavigationProps) {
           </div>
 
           <div className="flex items-center space-x-4">
-            <Button 
-              onClick={onAdminClick}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground"
-              data-testid="button-admin"
-            >
-              <Settings className="w-4 h-4 mr-2" />
-              Admin
-            </Button>
-            <button className="text-muted-foreground hover:text-primary transition-colors">
-              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9V7L15 1.5V3.5L21 9ZM3 9L9 3.5V1.5L3 7V9ZM15 12.5C15 14.4 13.4 16 11.5 16C9.6 16 8 14.4 8 12.5C8 10.6 9.6 9 11.5 9C13.4 9 15 10.6 15 12.5ZM20 20C20 20.6 19.6 21 19 21H5C4.4 21 4 20.6 4 20V19C4 17.9 4.9 17 6 17H18C19.1 17 20 17.9 20 19V20Z"/>
-              </svg>
-            </button>
+            {session ? (
+              <>
+                <Button 
+                  onClick={onAdminClick}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                  data-testid="button-admin"
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Admin
+                </Button>
+                <Button 
+                  onClick={handleLogout}
+                  variant="outline"
+                  size="icon"
+                  aria-label="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </>
+            ) : (
+              <Button 
+                onClick={() => setLocation('/login')}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                data-testid="button-login"
+              >
+                <LogIn className="w-4 h-4 mr-2" />
+                Admin Login
+              </Button>
+            )}
           </div>
         </div>
       </div>
