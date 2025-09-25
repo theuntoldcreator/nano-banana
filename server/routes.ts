@@ -5,7 +5,7 @@ import { storage as dbStorage } from "./storage";
 import { insertPromptSchema } from "@shared/schema";
 import multer from "multer";
 import path from "path";
-import { supabase } from "../src/integrations/supabase/client";
+import { supabase } from "../client/src/integrations/supabase/client";
 import { randomUUID } from "crypto";
 
 // Configure multer to store files in memory
