@@ -179,7 +179,10 @@ class PostgresStorage implements IStorage {
   private db;
 
   constructor() {
-    const sql = neon(process.env.DATABASE_URL!);
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL is not set");
+    }
+    const sql = neon(process.env.DATABASE_URL);
     this.db = drizzle(sql);
   }
 
@@ -242,4 +245,14 @@ class PostgresStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage(); // Using in-memory storage due to connection issues
+let storage: IStorage;
+
+if (process.env.DATABASE_URL) {
+  console.log("Using PostgresStorage");
+  storage = new PostgresStorage();
+} else {
+  console.log("DATABASE_URL not found, using MemStorage for local development.");
+  storage = new MemStorage();
+}
+
+export { storage };
