@@ -1,51 +1,24 @@
 import type { Express } from "express";
-import express from "express";
 import { createServer, type Server } from "http";
 import { storage as dbStorage } from "./storage";
 import { insertPromptSchema } from "@shared/schema";
-import multer from "multer";
-import path from "path";
-import { supabase } from "../client/src/integrations/supabase/client";
-import { randomUUID } from "crypto";
-
-// Configure multer to store files in memory
-const storage = multer.memoryStorage();
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only image files are allowed"));
-    }
-  },
-});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Get all prompts
   app.get("/api/prompts", async (req, res) => {
     try {
       const { category, search } = req.query;
-      console.log("GET /api/prompts query:", { category, search });
-      
       let prompts;
       if (search) {
-        console.log("Searching for:", search);
         prompts = await dbStorage.searchPrompts(search as string);
       } else if (category && category !== "all") {
-        console.log("Filtering by category:", category);
         prompts = await dbStorage.getPromptsByCategory(category as string);
       } else {
-        console.log("Getting all prompts");
         prompts = await dbStorage.getPrompts();
       }
-      
-      console.log("Returning", prompts.length, "prompts");
       res.json(prompts);
     } catch (error) {
+      console.error("Failed to fetch prompts:", error);
       res.status(500).json({ message: "Failed to fetch prompts" });
     }
   });
@@ -55,63 +28,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const prompt = await dbStorage.getPrompt(id);
-      
       if (!prompt) {
         return res.status(404).json({ message: "Prompt not found" });
       }
-      
       res.json(prompt);
     } catch (error) {
+      console.error(`Failed to fetch prompt ${req.params.id}:`, error);
       res.status(500).json({ message: "Failed to fetch prompt" });
     }
   });
 
   // Create new prompt
-  app.post("/api/prompts", upload.single("image"), async (req, res) => {
+  app.post("/api/prompts", async (req, res) => {
     try {
-      const { title, prompt, category, tags } = req.body;
-      
-      let imageUrl = "https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600";
-
-      if (req.file) {
-        const file = req.file;
-        const fileName = `${randomUUID()}-${file.originalname}`;
-        
-        const { data, error } = await supabase.storage
-          .from('gallery-images')
-          .upload(fileName, file.buffer, {
-            contentType: file.mimetype,
-            cacheControl: '3600',
-            upsert: false,
-          });
-
-        if (error) {
-          throw new Error(`Supabase upload error: ${error.message}`);
-        }
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('gallery-images')
-          .getPublicUrl(data.path);
-        
-        imageUrl = publicUrl;
-      }
-      
-      let parsedTags = tags;
-      if (typeof tags === "string") {
-        parsedTags = tags.split(",").map((tag: string) => tag.trim()).filter(Boolean);
-      }
-
-      const promptData = {
-        title,
-        prompt,
-        imageUrl,
-        category,
-        tags: parsedTags,
-      };
-
-      const validatedData = insertPromptSchema.parse(promptData);
+      const validatedData = insertPromptSchema.parse(req.body);
       const newPrompt = await dbStorage.createPrompt(validatedData);
-      
       res.status(201).json(newPrompt);
     } catch (error) {
       console.error("Error creating prompt:", error);
@@ -123,16 +54,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/prompts/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const updateData = req.body;
-      
-      const updatedPrompt = await dbStorage.updatePrompt(id, updateData);
-      
+      const updatedPrompt = await dbStorage.updatePrompt(id, req.body);
       if (!updatedPrompt) {
         return res.status(404).json({ message: "Prompt not found" });
       }
-      
       res.json(updatedPrompt);
     } catch (error) {
+      console.error(`Error updating prompt ${req.params.id}:`, error);
       res.status(400).json({ message: "Failed to update prompt" });
     }
   });
@@ -142,13 +70,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const deleted = await dbStorage.deletePrompt(id);
-      
       if (!deleted) {
         return res.status(404).json({ message: "Prompt not found" });
       }
-      
       res.json({ message: "Prompt deleted successfully" });
     } catch (error) {
+      console.error(`Error deleting prompt ${req.params.id}:`, error);
       res.status(500).json({ message: "Failed to delete prompt" });
     }
   });
@@ -158,13 +85,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const updatedPrompt = await dbStorage.incrementLikes(id);
-      
       if (!updatedPrompt) {
         return res.status(404).json({ message: "Prompt not found" });
       }
-      
       res.json(updatedPrompt);
     } catch (error) {
+      console.error(`Error liking prompt ${req.params.id}:`, error);
       res.status(500).json({ message: "Failed to update likes" });
     }
   });

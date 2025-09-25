@@ -11,14 +11,18 @@ import { insertPromptSchema } from "@shared/schema";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import { supabase } from "@/integrations/supabase/client";
+import { nanoid } from "nanoid";
+import { Progress } from "@/components/ui/progress";
+import { apiRequest } from "@/lib/queryClient";
 
 interface AdminPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const formSchema = insertPromptSchema.extend({
-  image: z.any().optional(),
+const formSchema = insertPromptSchema.omit({ imageUrl: true, id: true, createdAt: true, likes: true }).extend({
+  image: z.instanceof(FileList).optional(),
   tagsString: z.string().optional(),
 });
 
@@ -27,6 +31,7 @@ type FormData = z.infer<typeof formSchema>;
 export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState("upload");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [status, setStatus] = useState<'idle' | 'uploading' | 'saving'>('idle');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -35,7 +40,6 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
     handleSubmit,
     formState: { errors },
     setValue,
-    watch,
     reset,
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -49,44 +53,63 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
 
   const createPromptMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const formData = new FormData();
-      formData.append("title", data.title);
-      formData.append("prompt", data.prompt);
-      formData.append("category", data.category);
-      formData.append("tags", data.tagsString || "");
+      let imageUrl = "https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600";
+
+      const imageFile = data.image?.[0];
+      if (imageFile) {
+        setStatus('uploading');
+        const fileName = `${nanoid()}-${imageFile.name}`;
+        
+        const { data: uploadData, error } = await supabase.storage
+          .from('gallery-images')
+          .upload(fileName, imageFile, {
+            cacheControl: '3600',
+            upsert: false,
+          });
+
+        if (error) {
+          throw new Error(`Image upload failed: ${error.message}`);
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('gallery-images')
+          .getPublicUrl(uploadData.path);
+        
+        imageUrl = publicUrl;
+      }
       
-      if (data.image?.[0]) {
-        formData.append("image", data.image[0]);
-      }
+      setStatus('saving');
+      const parsedTags = data.tagsString ? data.tagsString.split(",").map(tag => tag.trim()).filter(Boolean) : [];
+      
+      const promptData = {
+        title: data.title,
+        prompt: data.prompt,
+        category: data.category,
+        imageUrl,
+        tags: parsedTags,
+      };
 
-      const response = await fetch("/api/prompts", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to create prompt");
-      }
-
-      return response.json();
+      return apiRequest("POST", "/api/prompts", promptData);
     },
     onSuccess: () => {
       toast({
         title: "Success!",
-        description: "Prompt has been created successfully.",
+        description: "Prompt has been published successfully.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/prompts"] });
       reset();
       setImagePreview(null);
+      setStatus('idle');
       onClose();
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to create prompt. Please try again.",
+        description: error.message || "Failed to create prompt. Please try again.",
         variant: "destructive",
       });
       console.error("Error creating prompt:", error);
+      setStatus('idle');
     },
   });
 
@@ -105,6 +128,12 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
   };
 
   if (!isOpen) return null;
+
+  const getButtonText = () => {
+    if (status === 'uploading') return 'Uploading Image...';
+    if (status === 'saving') return 'Saving Prompt...';
+    return 'Save & Publish';
+  };
 
   return (
     <div className="fixed inset-0 z-50" data-testid="admin-panel">
@@ -194,6 +223,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                         {...register("image")}
                         onChange={handleImageChange}
                         data-testid="input-image"
+                        disabled={status !== 'idle'}
                       />
                     </div>
                   </div>
@@ -206,6 +236,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                       placeholder="Enter a descriptive title..."
                       {...register("title")}
                       data-testid="input-title"
+                      disabled={status !== 'idle'}
                     />
                     {errors.title && (
                       <p className="text-destructive text-sm mt-1">{errors.title.message}</p>
@@ -222,6 +253,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                       className="font-mono text-sm"
                       {...register("prompt")}
                       data-testid="textarea-prompt"
+                      disabled={status !== 'idle'}
                     />
                     {errors.prompt && (
                       <p className="text-destructive text-sm mt-1">{errors.prompt.message}</p>
@@ -231,7 +263,7 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                   {/* Category Selection */}
                   <div>
                     <Label className="block text-sm font-medium text-foreground mb-2">Category</Label>
-                    <Select onValueChange={(value) => setValue("category", value)} data-testid="select-category">
+                    <Select onValueChange={(value) => setValue("category", value)} data-testid="select-category" disabled={status !== 'idle'}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a category" />
                       </SelectTrigger>
@@ -259,32 +291,35 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                       placeholder="cyberpunk, neon, futuristic (comma separated)" 
                       {...register("tagsString")}
                       data-testid="input-tags"
+                      disabled={status !== 'idle'}
                     />
                   </div>
+
+                  {/* Progress Bar */}
+                  {status !== 'idle' && (
+                    <div className="space-y-2 pt-2">
+                      <Label className="text-sm font-medium text-foreground">{getButtonText()}</Label>
+                      <Progress value={status === 'uploading' ? 40 : 100} className="w-full transition-all duration-500" />
+                    </div>
+                  )}
 
                   {/* Action Buttons */}
                   <div className="flex space-x-4 pt-4">
                     <Button 
                       type="submit" 
-                      disabled={createPromptMutation.isPending}
+                      disabled={status !== 'idle'}
                       className="bg-primary hover:bg-primary/90 text-primary-foreground"
                       data-testid="button-save-publish"
                     >
                       <Save className="w-4 h-4 mr-2" />
-                      {createPromptMutation.isPending ? "Saving..." : "Save & Publish"}
-                    </Button>
-                    <Button 
-                      type="button" 
-                      variant="secondary"
-                      data-testid="button-save-draft"
-                    >
-                      Save as Draft
+                      {getButtonText()}
                     </Button>
                     <Button 
                       type="button" 
                       variant="outline" 
                       onClick={onClose}
                       data-testid="button-cancel"
+                      disabled={status !== 'idle'}
                     >
                       Cancel
                     </Button>
@@ -292,7 +327,8 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                 </form>
               </div>
             )}
-
+            
+            {/* Other tabs remain as placeholders */}
             {activeTab === "manage" && (
               <div className="max-w-5xl">
                 <h3 className="text-2xl font-bold text-foreground mb-6">Manage Prompts</h3>
@@ -301,7 +337,6 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                 </div>
               </div>
             )}
-
             {activeTab === "analytics" && (
               <div className="max-w-5xl">
                 <h3 className="text-2xl font-bold text-foreground mb-6">Analytics</h3>
@@ -310,7 +345,6 @@ export default function AdminPanel({ isOpen, onClose }: AdminPanelProps) {
                 </div>
               </div>
             )}
-
             {activeTab === "settings" && (
               <div className="max-w-3xl">
                 <h3 className="text-2xl font-bold text-foreground mb-6">Settings</h3>
